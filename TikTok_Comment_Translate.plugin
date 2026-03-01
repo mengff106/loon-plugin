@@ -1,8 +1,0 @@
-#!name=TikTok 评论自动翻译（稳）
-#!desc=拦截 TikTok 评论接口，把每条评论追加中文翻译（第一条会加[LOON]用于确认生效）
-#!author=mengff106
-
-[Script]
-http-response ^https?:\/\/[^\/]*tiktokv\.com\/.*comment\/list.* requires-body=1,max-size=0,script-path=https://raw.githubusercontent.com/mengff106/loon-plugin/main/tiktok_comment_translate.js,timeout=60,tag=TikTok评论翻译
-[MITM]
-hostname = %APPEND% *.tiktokv.com, translate.googleapis.com
