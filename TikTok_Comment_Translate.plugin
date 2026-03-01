@@ -3,7 +3,6 @@
 #!author=mengff106
 
 [Script]
-http-response ^https?:\/\/[^\/]*tiktokv\.com\/aweme\/v\d+\/comment\/list\/ requires-body=1,max-size=0,script-path=https://raw.githubusercontent.com/mengff106/loon-plugin/main/tiktok_comment_translate.js,timeout=60,tag=TikTok评论翻译
-
+http-response ^https?:\/\/[^\/]*tiktokv\.com\/.*comment\/list.* requires-body=1,max-size=0,script-path=https://raw.githubusercontent.com/mengff106/loon-plugin/main/tiktok_comment_translate.js,timeout=60,tag=TikTok评论翻译
 [MITM]
 hostname = %APPEND% *.tiktokv.com, translate.googleapis.com
