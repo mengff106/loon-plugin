@@ -1,0 +1,9 @@
+#!name=TikTok 评论自动翻译
+#!desc=自动给 TikTok 评论追加中文翻译
+#!author=YourName
+
+[Script]
+http-response ^https?:\/\/api\d+\.tiktokv\.com\/aweme\/v\d+\/comment\/list\/ requires-body=1,max-size=0,script-path=https://raw.githubusercontent.com/mengff106/loon-plugin/main/tiktok_comment_translate.js,timeout=60,tag=TikTok评论翻译
+
+[MITM]
+hostname = %APPEND% api16.tiktokv.com, api19.tiktokv.com, api22.tiktokv.com, api31.tiktokv.com, api32.tiktokv.com, api33.tiktokv.com
