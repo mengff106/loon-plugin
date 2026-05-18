@@ -1,17 +1,7 @@
 /*
- * 网络测速 for Quantumult X (增强版)
- * 原作者：@wuhu_zzz @xream @keywos @整点猫咪
- * 适配：QX 专用，增加缓存与长超时
- *
- * 参数（$argument，用 & 连接 key=value）：
- * title      : 标题，默认“网速测试”
- * iconfast   : 高速图标 (≥100 Mbps)
- * iconmid    : 中速图标 (50-100 Mbps)
- * iconslow   : 低速图标 (<50 Mbps)
- * colorlow   : 低延迟颜色 (<100ms)，如 #06D6A0
- * colormid   : 中延迟颜色 (100-200ms)，如 #FFD166
- * colorhigh  : 高延迟颜色 (≥200ms)，如 #EF476F
- * mb         : 测试数据量 MB，默认10 (受CF限制实际最大约4)
+ * 网络测速 for Quantumult X (OVH稳定版)
+ * 测试地址：http://proof.ovh.net/files/10Mb.dat
+ * 超时30秒，带缓存兜底
  */
 
 const $ = new Env('network-speed')
@@ -20,214 +10,86 @@ if (typeof $argument !== 'undefined') {
   arg = Object.fromEntries($argument.split('&').map(item => item.split('=')))
 }
 
-const CACHE_KEY = 'network_speed_cache'
-
+const CACHE_KEY = 'netspeed_ovh'
 ;(async () => {
   const mb = Number(arg?.mb) || 10
-  const bytes = mb * 1024 * 1024
-
-  // 读取缓存
-  let cache = null
-  try {
-    const raw = $prefs.valueForKey(CACHE_KEY)
-    if (raw) cache = JSON.parse(raw)
-  } catch (e) {}
-
-  let down = { url: `https://speed.cloudflare.com/__down?bytes=${bytes}`, timeout: 15000 }
-  let cp   = { url: `https://speed.cloudflare.com/__up?bytes=${bytes}`, timeout: 15000 }
-
+  // OVH 提供固定大小文件：1Mb.dat, 10Mb.dat, 100Mb.dat, 1000Mb.dat
+  const file = mb <= 1 ? '1Mb.dat' : mb <= 10 ? '10Mb.dat' : '100Mb.dat'
+  const url = `http://proof.ovh.net/files/${file}`
+  
+  let down = { url, timeout: 30000 }
   down = ReRequest(down, $environment?.params)
-  cp   = ReRequest(cp, $environment?.params)
 
-  console.log('down:' + JSON.stringify(down))
-
-  let speed, pingt, duration, isCached = false
+  let speed, duration, isCached = false, cache
+  try { cache = JSON.parse($prefs.valueForKey(CACHE_KEY) || 'null') } catch (e) {}
 
   try {
-    // 下行速率测试
-    const Down_start = Date.now()
+    const start = Date.now()
     await $.http.get(down)
-    const Down_end = Date.now()
-    duration = (Down_end - Down_start) / 1000
-    speed = mb / duration
-
-    // 延迟测试
-    const Ping_start = Date.now()
-    await $.http.get(cp)
-    pingt = Date.now() - Ping_start
-
-    // 写入缓存
-    const newCache = {
-      speed: speed,
-      pingt: pingt,
-      duration: duration,
-      timestamp: Date.now()
-    }
-    $prefs.setValueForKey(JSON.stringify(newCache), CACHE_KEY)
+    duration = (Date.now() - start) / 1000
+    // 实际下载量可能小于 mb，用实际用时计算
+    speed = (mb * 8) / duration  // 这里直接用 mb 估算（OVH 文件大小固定）
+    $prefs.setValueForKey(JSON.stringify({ speed, duration, timestamp: Date.now() }), CACHE_KEY)
   } catch (e) {
-    // 测速失败，尝试使用缓存
     if (cache) {
       speed = cache.speed
-      pingt = cache.pingt
       duration = cache.duration
       isCached = true
     } else {
-      // 彻底失败
       $.done({
-        title: arg?.title || '网络测速',
-        content: '测速失败，请检查网络或节点',
-        icon: 'xmark.circle',
-        'icon-color': '#FF0000'
+        title: '网络测速失败',
+        content: '无法连接到测速服务器\n请切换节点后重试',
+        icon: 'wifi.slash',
+        'icon-color': '#FF3B30'
       })
       return
     }
   }
 
-  // 动态图标与颜色
-  const a = Diydecide(0, 50, 100, round(Math.abs(speed * 8)))
-  const b = Diydecide(0, 100, 200, pingt) + 3
-
-  const shifts = {
-    '1': arg?.iconslow,
-    '2': arg?.iconmid,
-    '3': arg?.iconfast,
-    '4': arg?.colorlow,
-    '5': arg?.colormid,
-    '6': arg?.colorhigh
-  }
-
-  const icon = shifts[a] || 'network'
-  const color = shifts[b] || '#CDCDCD'
-
+  const speedMbps = round(speed, 1)
   const Panel = {
     title: arg?.title || '网速测试',
     content:
-      `下行速率：${round(Math.abs(speed * 8))} Mbps [${round(Math.abs(speed), 1)} MB/s]\n` +
-      `网络延迟：${pingt} ms\n` +
-      `测试用时：${round(duration, 2)} s\n` +
-      `测试时间：${new Date().toTimeString().split(' ')[0]}\n` +
-      `节点 ➟ ${$environment?.params || '无'}` +
+      `⬇️ 速率：${speedMbps} Mbps\n` +
+      `📦 文件：${file}\n` +
+      `⏱ 用时：${round(duration, 2)}s\n` +
+      `🕒 时间：${new Date().toTimeString().split(' ')[0]}\n` +
+      `🚀 节点：${$environment?.params || '无'}` +
       (isCached ? '\n⚠️ 使用缓存数据' : ''),
-    icon: icon,
-    'icon-color': color
+    icon: 'network',
+    'icon-color': '#007AFF'
   }
-
   $.done(Panel)
 })()
 .catch(e => {
-  $.logErr(e)
-  $.done({ title: '网络测速', content: '脚本异常', icon: 'xmark.circle', 'icon-color': '#FF0000' })
+  $.done({
+    title: '测速异常',
+    content: '脚本运行出错，请查看日志',
+    icon: 'exclamationmark.triangle',
+    'icon-color': '#FF9500'
+  })
 })
 
-// ========== 工具函数 ==========
-function createRound(methodName) {
-  const func = Math[methodName]
-  return (number, precision) => {
-    precision = precision == null ? 0 : precision >= 0 ? Math.min(precision, 292) : Math.max(precision, -292)
-    if (precision) {
-      let pair = `${number}e`.split('e')
-      const value = func(`${pair[0]}e${+pair[1] + precision}`)
-      pair = `${value}e`.split('e')
-      return +`${pair[0]}e${+pair[1] - precision}`
-    }
-    return func(number)
-  }
+// ========== 工具 ==========
+function round(num, precision = 0) {
+  const factor = Math.pow(10, precision)
+  return Math.round(num * factor) / factor
+}
+function ReRequest(req = {}, proxy) {
+  if (proxy) req.opts = { policy: proxy }
+  return req
 }
 
-function round(...args) {
-  return createRound('round')(...args)
-}
-
-function Diydecide(x, y, z, item) {
-  const array = [x, y, z]
-  array.push(item)
-  return array.sort((a, b) => a - b).findIndex(i => i === item)
-}
-
-function ReRequest(request = {}, proxyName = '') {
-  if (proxyName) {
-    if (request.opts) request.opts.policy = proxyName
-    else request.opts = { policy: proxyName }
-  }
-  return request
-}
-
-// ========== 最小化 Env 兼容层（仅 QX） ==========
 function Env(t, s) {
-  class e {
-    constructor(t) { this.env = t }
-    send(t, s = 'GET') {
-      t = typeof t === 'string' ? { url: t } : t
-      let e = this.get
-      if (s === 'POST') e = this.post
-      return new Promise((resolve, reject) => {
-        e.call(this, t, (err, res, body) => {
-          err ? reject(err) : resolve(res)
-        })
-      })
-    }
-    get(t) { return this.send.call(this.env, t) }
-    post(t) { return this.send.call(this.env, t, 'POST') }
-  }
-
   return new class {
-    constructor(t, s) {
-      this.name = t
-      this.http = new e(this)
-      this.data = null
-      this.dataFile = 'box.dat'
-      this.logs = []
-      this.isMute = false
-      this.isNeedRewrite = false
-      this.encoding = 'utf-8'
-      this.startTime = Date.now()
-      Object.assign(this, s)
-    }
-
+    constructor(t, s) { this.name = t; Object.assign(this, s) }
     isQuanX() { return typeof $task !== 'undefined' }
-    lodash_get(t, s, e) {
-      const i = s.replace(/\[(\d+)\]/g, '.$1').split('.')
-      let r = t
-      for (const t of i) if (r = Object(r)[t], r === undefined) return e
-      return r
+    get(t, cb = () => {}) {
+      if (t.headers) { delete t.headers['Content-Type']; delete t.headers['Content-Length'] }
+      $task.fetch(t).then(res => {
+        cb(null, { status: res.statusCode, headers: res.headers, body: res.body }, res.body)
+      }, err => cb(err?.error || 'UndefinedError'))
     }
-    get(t, s = () => {}) {
-      if (t.headers) {
-        delete t.headers['Content-Type']
-        delete t.headers['Content-Length']
-      }
-      if (this.isQuanX()) {
-        this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, { hints: false }))
-        $task.fetch(t).then(
-          res => {
-            const { statusCode: status, headers, body } = res
-            s(null, { status, headers, body }, body)
-          },
-          err => s(err?.error || 'UndefinedError')
-        )
-      }
-    }
-    post(t, s = () => {}) {
-      const method = t.method ? t.method.toLowerCase() : 'post'
-      if (t.body && t.headers && !t.headers['Content-Type']) {
-        t.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-      }
-      delete t.headers?.['Content-Length']
-      if (this.isQuanX()) {
-        t.method = method
-        this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, { hints: false }))
-        $task.fetch(t).then(
-          res => {
-            const { statusCode: status, headers, body } = res
-            s(null, { status, headers, body }, body)
-          },
-          err => s(err?.error || 'UndefinedError')
-        )
-      }
-    }
-    logErr(t) { console.log(`❗${this.name}, 错误! ` + (t.stack || t)) }
-    log(...t) { t.length > 0 && (this.logs = [...this.logs, ...t]); console.log(t.join(' ')) }
-    wait(t) { return new Promise(s => setTimeout(s, t)) }
     done(t = {}) { $done(t) }
   }(t, s)
 }
