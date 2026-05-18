@@ -1,8 +1,8 @@
 /*
- * 网络测速 for Quantumult X
+ * 网络测速 for Quantumult X (增强版)
  * 原作者：@wuhu_zzz @xream @keywos @整点猫咪
- * 适配：仅保留 QX 逻辑，面板输出修正
- * 
+ * 适配：QX 专用，增加缓存与长超时
+ *
  * 参数（$argument，用 & 连接 key=value）：
  * title      : 标题，默认“网速测试”
  * iconfast   : 高速图标 (≥100 Mbps)
@@ -12,9 +12,6 @@
  * colormid   : 中延迟颜色 (100-200ms)，如 #FFD166
  * colorhigh  : 高延迟颜色 (≥200ms)，如 #EF476F
  * mb         : 测试数据量 MB，默认10 (受CF限制实际最大约4)
- *
- * 示例参数：
- * title=极速测试&iconfast=bolt.fill&iconmid=flame&iconslow=tortoise&colorlow=#06D6A0&colormid=#FFD166&colorhigh=#EF476F&mb=4
  */
 
 const $ = new Env('network-speed')
@@ -23,33 +20,72 @@ if (typeof $argument !== 'undefined') {
   arg = Object.fromEntries($argument.split('&').map(item => item.split('=')))
 }
 
+const CACHE_KEY = 'network_speed_cache'
+
 ;(async () => {
   const mb = Number(arg?.mb) || 10
   const bytes = mb * 1024 * 1024
 
-  let down = { url: `https://speed.cloudflare.com/__down?bytes=${bytes}`, timeout: 3000 }
-  let cp   = { url: `https://speed.cloudflare.com/__up?bytes=${bytes}`, timeout: 3000 }
+  // 读取缓存
+  let cache = null
+  try {
+    const raw = $prefs.valueForKey(CACHE_KEY)
+    if (raw) cache = JSON.parse(raw)
+  } catch (e) {}
 
-  // 指定代理策略（使用当前环境节点）
+  let down = { url: `https://speed.cloudflare.com/__down?bytes=${bytes}`, timeout: 15000 }
+  let cp   = { url: `https://speed.cloudflare.com/__up?bytes=${bytes}`, timeout: 15000 }
+
   down = ReRequest(down, $environment?.params)
   cp   = ReRequest(cp, $environment?.params)
 
   console.log('down:' + JSON.stringify(down))
 
-  // 下行速率测试
-  const Down_start = Date.now()
-  await $.http.get(down)
-  const Down_end = Date.now()
-  const duration = (Down_end - Down_start) / 1000
-  const speed = mb / duration
+  let speed, pingt, duration, isCached = false
 
-  // 延迟测试
-  const Ping_start = Date.now()
-  await $.http.get(cp)
-  const pingt = Date.now() - Ping_start
+  try {
+    // 下行速率测试
+    const Down_start = Date.now()
+    await $.http.get(down)
+    const Down_end = Date.now()
+    duration = (Down_end - Down_start) / 1000
+    speed = mb / duration
 
-  const a = Diydecide(0, 50, 100, round(Math.abs(speed * 8)))      // 0,1,2
-  const b = Diydecide(0, 100, 200, pingt) + 3                     // 3,4,5
+    // 延迟测试
+    const Ping_start = Date.now()
+    await $.http.get(cp)
+    pingt = Date.now() - Ping_start
+
+    // 写入缓存
+    const newCache = {
+      speed: speed,
+      pingt: pingt,
+      duration: duration,
+      timestamp: Date.now()
+    }
+    $prefs.setValueForKey(JSON.stringify(newCache), CACHE_KEY)
+  } catch (e) {
+    // 测速失败，尝试使用缓存
+    if (cache) {
+      speed = cache.speed
+      pingt = cache.pingt
+      duration = cache.duration
+      isCached = true
+    } else {
+      // 彻底失败
+      $.done({
+        title: arg?.title || '网络测速',
+        content: '测速失败，请检查网络或节点',
+        icon: 'xmark.circle',
+        'icon-color': '#FF0000'
+      })
+      return
+    }
+  }
+
+  // 动态图标与颜色
+  const a = Diydecide(0, 50, 100, round(Math.abs(speed * 8)))
+  const b = Diydecide(0, 100, 200, pingt) + 3
 
   const shifts = {
     '1': arg?.iconslow,
@@ -60,10 +96,9 @@ if (typeof $argument !== 'undefined') {
     '6': arg?.colorhigh
   }
 
-  const icon = shifts[a] || 'hare'
+  const icon = shifts[a] || 'network'
   const color = shifts[b] || '#CDCDCD'
 
-  // 构造 QX 面板（注意：字段是 content 不是 message）
   const Panel = {
     title: arg?.title || '网速测试',
     content:
@@ -71,7 +106,8 @@ if (typeof $argument !== 'undefined') {
       `网络延迟：${pingt} ms\n` +
       `测试用时：${round(duration, 2)} s\n` +
       `测试时间：${new Date().toTimeString().split(' ')[0]}\n` +
-      `节点 ➟ ${$environment?.params || '无'}`,
+      `节点 ➟ ${$environment?.params || '无'}` +
+      (isCached ? '\n⚠️ 使用缓存数据' : ''),
     icon: icon,
     'icon-color': color
   }
@@ -80,7 +116,7 @@ if (typeof $argument !== 'undefined') {
 })()
 .catch(e => {
   $.logErr(e)
-  $.done({ title: '网络测速', content: '测速失败，请检查网络或节点', icon: 'xmark.circle', 'icon-color': '#FF0000' })
+  $.done({ title: '网络测速', content: '脚本异常', icon: 'xmark.circle', 'icon-color': '#FF0000' })
 })
 
 // ========== 工具函数 ==========
