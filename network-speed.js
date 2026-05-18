@@ -175,21 +175,4 @@ function Env(t, s) {
         t.headers['Content-Type'] = 'application/x-www-form-urlencoded'
       }
       delete t.headers?.['Content-Length']
-      if (this.isQuanX()) {
-        t.method = method
-        this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, { hints: false }))
-        $task.fetch(t).then(
-          res => {
-            const { statusCode: status, headers, body } = res
-            s(null, { status, headers, body }, body)
-          },
-          err => s(err?.error || 'UndefinedError')
-        )
-      }
-    }
-    logErr(t) { console.log(`❗${this.name}, 错误! ` + (t.stack || t)) }
-    log(...t) { t.length > 0 && (this.logs = [...this.logs, ...t]); console.log(t.join(' ')) }
-    wait(t) { return new Promise(s => setTimeout(s, t)) }
-    done(t = {}) { $done(t) }
-  }(t, s)
-}
+      if (this.isQu
