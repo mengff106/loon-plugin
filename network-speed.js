@@ -2,7 +2,7 @@
  * 网络测速 for Quantumult X
  * 原作者：@wuhu_zzz @xream @keywos @整点猫咪
  * 适配：仅保留 QX 逻辑，面板输出修正
- *
+ * 
  * 参数（$argument，用 & 连接 key=value）：
  * title      : 标题，默认“网速测试”
  * iconfast   : 高速图标 (≥100 Mbps)
@@ -78,8 +78,10 @@ if (typeof $argument !== 'undefined') {
 
   $.done(Panel)
 })()
-.catch(e => $.logErr(e))
-.finally(() => $.done())
+.catch(e => {
+  $.logErr(e)
+  $.done({ title: '网络测速', content: '测速失败，请检查网络或节点', icon: 'xmark.circle', 'icon-color': '#FF0000' })
+})
 
 // ========== 工具函数 ==========
 function createRound(methodName) {
@@ -175,4 +177,21 @@ function Env(t, s) {
         t.headers['Content-Type'] = 'application/x-www-form-urlencoded'
       }
       delete t.headers?.['Content-Length']
-      if (this.isQu
+      if (this.isQuanX()) {
+        t.method = method
+        this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, { hints: false }))
+        $task.fetch(t).then(
+          res => {
+            const { statusCode: status, headers, body } = res
+            s(null, { status, headers, body }, body)
+          },
+          err => s(err?.error || 'UndefinedError')
+        )
+      }
+    }
+    logErr(t) { console.log(`❗${this.name}, 错误! ` + (t.stack || t)) }
+    log(...t) { t.length > 0 && (this.logs = [...this.logs, ...t]); console.log(t.join(' ')) }
+    wait(t) { return new Promise(s => setTimeout(s, t)) }
+    done(t = {}) { $done(t) }
+  }(t, s)
+}
